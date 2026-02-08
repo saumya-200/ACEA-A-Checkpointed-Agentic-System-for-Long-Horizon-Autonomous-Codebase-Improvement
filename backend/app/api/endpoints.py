@@ -67,6 +67,17 @@ import os
 @router.get("/projects/{project_id}/download")
 async def download_project_route(project_id: str):
     from app.core.filesystem import archive_project
+    
+    # Sync from active Desktop sandbox first
+    try:
+        from app.services.e2b_desktop_service import get_e2b_desktop_service
+        desktop_service = get_e2b_desktop_service()
+        if desktop_service.has_active_sandbox(project_id):
+            await desktop_service.sync_from_sandbox(project_id)
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to sync before download: {e}")
+    
     zip_path = archive_project(project_id)
     
     if not zip_path or not os.path.exists(zip_path):
@@ -137,17 +148,16 @@ def _load_blueprint(project_id: str) -> dict:
 @router.post("/execute/{project_id}")
 async def execute_project_route(project_id: str):
     """
-    Execute project using E2B cloud sandbox.
-    Creates sandbox, uploads files, installs dependencies, starts app.
-    Returns public preview URL.
+    Execute project using E2B Desktop sandbox.
+    Creates Desktop with VS Code + Chrome, returns stream URL.
     """
-    from app.services.e2b_service import get_e2b_service
+    from app.services.e2b_desktop_service import get_e2b_desktop_service
     
     blueprint = _load_blueprint(project_id)
     
-    # Create E2B sandbox
-    e2b = get_e2b_service()
-    result = await e2b.create_sandbox(project_id, blueprint)
+    # Create E2B Desktop environment
+    desktop_service = get_e2b_desktop_service()
+    result = await desktop_service.create_desktop_environment(project_id, blueprint)
     
     return result
 
@@ -163,13 +173,50 @@ async def get_logs_route(project_id: str):
 
 @router.post("/stop/{project_id}")
 async def stop_project_route(project_id: str):
-    """Stop E2B sandbox."""
-    from app.services.e2b_service import get_e2b_service
+    """Stop E2B Desktop sandbox (syncs files first)."""
+    from app.services.e2b_desktop_service import get_e2b_desktop_service
     
-    e2b = get_e2b_service()
-    result = await e2b.stop_sandbox(project_id)
+    desktop_service = get_e2b_desktop_service()
+    result = await desktop_service.stop_sandbox(project_id, sync_first=True)
     
-    return {"status": result.get("status", "stopped"), "source": "e2b"}
+    return {"status": result.get("status", "stopped"), "source": "e2b_desktop"}
+
+
+@router.post("/desktop/sync/{project_id}")
+async def sync_desktop_route(project_id: str, direction: str = "from"):
+    """
+    Sync files between backend storage and Desktop sandbox.
+    direction: 'from' = sandbox -> backend, 'to' = backend -> sandbox, 'both' = bidirectional
+    """
+    from app.services.e2b_desktop_service import get_e2b_desktop_service
+    
+    desktop_service = get_e2b_desktop_service()
+    
+    if not desktop_service.has_active_sandbox(project_id):
+        raise HTTPException(status_code=404, detail="No active Desktop sandbox for this project")
+    
+    results = {}
+    
+    if direction in ("from", "both"):
+        result = await desktop_service.sync_from_sandbox(project_id)
+        results["from_sandbox"] = result
+    
+    if direction in ("to", "both"):
+        result = await desktop_service.sync_to_sandbox(project_id)
+        results["to_sandbox"] = result
+    
+    return {"status": "success", "results": results}
+
+
+@router.get("/desktop/status/{project_id}")
+async def desktop_status_route(project_id: str):
+    """Get status of Desktop sandbox for a project."""
+    from app.services.e2b_desktop_service import get_e2b_desktop_service
+    
+    desktop_service = get_e2b_desktop_service()
+    status = await desktop_service.get_sandbox_status(project_id)
+    
+    return status
 
 @router.post("/debug/{project_id}")
 async def debug_project_route(project_id: str):
@@ -268,16 +315,16 @@ async def ai_update_file(project_id: str, request: AIUpdateRequest):
     # Save to disk
     update_file_content(project_id, request.file_path, updated_content)
     
-    # Sync to E2B sandbox if active
+    # Sync to E2B Desktop sandbox if active
     try:
-        from app.services.e2b_vscode_service import get_e2b_vscode_service
-        vscode_service = get_e2b_vscode_service()
-        if project_id in vscode_service.active_sandboxes:
-            await vscode_service.sync_file_to_sandbox(project_id, request.file_path, updated_content)
+        from app.services.e2b_desktop_service import get_e2b_desktop_service
+        desktop_service = get_e2b_desktop_service()
+        if desktop_service.has_active_sandbox(project_id):
+            await desktop_service.sync_file_to_sandbox(project_id, request.file_path, updated_content)
     except Exception as e:
         # Don't fail the request if E2B sync fails
         import logging
-        logging.warning(f"Failed to sync to E2B sandbox: {e}")
+        logging.warning(f"Failed to sync to E2B Desktop sandbox: {e}")
     
     return {
         "status": "success",

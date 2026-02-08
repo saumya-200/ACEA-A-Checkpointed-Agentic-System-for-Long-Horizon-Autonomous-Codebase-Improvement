@@ -3,6 +3,7 @@ uvicorn
 python-multipart
 python-dotenv
 e2b-code-interpreter
+e2b-desktop
 python-socketio
 langchain
 langchain-openai

@@ -109,10 +109,10 @@ export default function WarRoomPage() {
             setFiles(prev => ({ ...prev, [data.path]: data.content }))
         })
 
-        // VS Code ready event - auto-opens full-screen VS Code
-        socket.on("vscode_ready", (data: any) => {
-            setVscodeUrl(data.vscode_url)
-            setPreviewUrl(data.preview_url)
+        // Desktop ready event - auto-opens full-screen Desktop (noVNC stream)
+        socket.on("desktop_ready", (data: any) => {
+            setVscodeUrl(data.stream_url) // stream_url is the noVNC URL
+            setPreviewUrl(null) // Preview is inside the Desktop, no separate iframe needed
             setSandboxId(data.sandbox_id)
             setProjectType(data.project_type || 'unknown')
             setVsCodePort(data.port || 3000)
@@ -120,11 +120,11 @@ export default function WarRoomPage() {
             setShowWelcomeBanner(true)
             setExecutionStatus('running')
             setIsLoadingPreview(false)
-            addLog('SYSTEM', `✅ VS Code ready! Preview: ${data.preview_url}`, 'success')
+            addLog('SYSTEM', `✅ Desktop ready! See VS Code + Chrome inside the stream.`, 'success')
         })
 
-        socket.on("vscode_error", (data: any) => {
-            addLog('SYSTEM', `⚠️ VS Code setup failed: ${data.error}`, 'error')
+        socket.on("desktop_error", (data: any) => {
+            addLog('SYSTEM', `⚠️ Desktop setup failed: ${data.error}`, 'error')
             setIsLoadingPreview(false)
         })
 
@@ -136,8 +136,8 @@ export default function WarRoomPage() {
             socket.off("mission_complete")
             socket.off("generation_started")
             socket.off("file_generated")
-            socket.off("vscode_ready")
-            socket.off("vscode_error")
+            socket.off("desktop_ready")
+            socket.off("desktop_error")
         }
     }, [])
 
@@ -232,12 +232,8 @@ export default function WarRoomPage() {
     const handleStop = async () => {
         if (!projectId) return
         try {
-            // Try VS Code stop first, then fallback to regular stop
-            try {
-                await fetch(`http://localhost:8000/api/vscode/stop/${projectId}`, { method: 'POST' })
-            } catch {
-                await fetch(`http://localhost:8000/api/stop/${projectId}`, { method: 'POST' })
-            }
+            // Call Desktop stop endpoint (syncs files first)
+            await fetch(`http://localhost:8000/api/stop/${projectId}`, { method: 'POST' })
             setExecutionStatus('stopped')
             setShowPreview(false)
             setShowFullScreenVSCode(false)
@@ -245,7 +241,7 @@ export default function WarRoomPage() {
             setPreviewUrl(null)
             setVscodeUrl(null)
             setSandboxId(null)
-            addLog('SYSTEM', '⏹️ Sandbox stopped', 'warning')
+            addLog('SYSTEM', '⏹️ Desktop stopped (files synced)', 'warning')
         } catch (e) {
             addLog('SYSTEM', 'Failed to stop execution', 'error')
         }

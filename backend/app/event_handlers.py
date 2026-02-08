@@ -89,11 +89,11 @@ async def start_mission(sid, data):
         await sio.emit('mission_complete', {'project_id': initial_state['project_id']}, room=sid)
         await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': 'Mission Sequence Concluded.'}, room=sid)
         
-        # Auto-create VS Code environment after mission completes
+        # Auto-create Desktop environment after mission completes
         try:
-            await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': '🖥️ Setting up VS Code environment...'}, room=sid)
+            await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': '🖥️ Setting up Desktop environment...'}, room=sid)
             
-            from app.services.e2b_vscode_service import get_e2b_vscode_service
+            from app.services.e2b_desktop_service import get_e2b_desktop_service
             from app.core.filesystem import read_project_files
             import json
             from pathlib import Path
@@ -106,42 +106,41 @@ async def start_mission(sid, data):
                 with open(blueprint_path) as f:
                     blueprint = json.load(f)
             
-            # Create VS Code environment
-            vscode_service = get_e2b_vscode_service()
+            # Create Desktop environment
+            desktop_service = get_e2b_desktop_service()
             
             async def progress_callback(msg):
                 await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': msg}, room=sid)
             
-            result = await vscode_service.create_vscode_environment(
+            result = await desktop_service.create_desktop_environment(
                 initial_state['project_id'],
                 blueprint,
                 on_progress=progress_callback
             )
             
             if result["status"] == "ready":
-                await sio.emit('vscode_ready', {
+                await sio.emit('desktop_ready', {
                     'project_id': initial_state['project_id'],
-                    'vscode_url': result['vscode_url'],
-                    'preview_url': result['preview_url'],
+                    'stream_url': result['stream_url'],
                     'sandbox_id': result['sandbox_id'],
                     'project_type': result.get('project_type', 'unknown'),
                     'port': result.get('port', 3000)
                 }, room=sid)
-                await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': '✅ VS Code environment ready!'}, room=sid)
+                await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': '✅ Desktop environment ready!'}, room=sid)
             else:
-                await sio.emit('vscode_error', {
+                await sio.emit('desktop_error', {
                     'project_id': initial_state['project_id'],
-                    'error': result.get('message', 'Failed to create VS Code environment')
+                    'error': result.get('message', 'Failed to create Desktop environment')
                 }, room=sid)
-                await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': f"⚠️ VS Code setup failed: {result.get('message', 'Unknown error')}"}, room=sid)
+                await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': f"⚠️ Desktop setup failed: {result.get('message', 'Unknown error')}"}, room=sid)
         except Exception as e:
             import traceback
             traceback.print_exc()
-            await sio.emit('vscode_error', {
+            await sio.emit('desktop_error', {
                 'project_id': initial_state['project_id'],
                 'error': str(e)
             }, room=sid)
-            await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': f"⚠️ VS Code setup error: {str(e)[:100]}"}, room=sid)
+            await sio.emit('agent_log', {'agent_name': 'SYSTEM', 'message': f"⚠️ Desktop setup error: {str(e)[:100]}"}, room=sid)
 
     except Exception as e:
         print(f"Graph Error: {e}")
