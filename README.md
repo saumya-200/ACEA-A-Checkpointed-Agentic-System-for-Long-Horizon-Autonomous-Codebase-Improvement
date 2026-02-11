@@ -217,7 +217,3 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 Contributions are welcome! Please read our contributing guidelines before submitting PRs.
 
-## 📧 Contact
-
-- **Author**: Srikant
-- **GitHub**: [@Srikant-03](https://github.com/Srikant-03)
